@@ -5,28 +5,35 @@ import numpy as np
 import re
 
 class TransformNewColumn(BaseEstimator):
-    def __init__(self,mapping = {}):
-        '''
+    '''
+        This class wil be used to create a new columns in dataset
+        
         mapping = {'TotalBath': 'BsmtFullBath + 0.5*BsmtHalfBath + FullBath + 0.5*HalfBath'}
-        '''
+    '''
+    def __init__(self,mapping = {}):
         self.mapping = mapping
-        self.opperators = '\\+|\\*'
+        self.opperators = '[\+|\-|\*|\/|\%]+'
+        self.mapping_commands = {}
 
     def fit(self):
         return True
 
     def _adjust_command(self, command):
-        command = command.replace(' ','')
-        reg1 = re.compile(self.opperators)
-        for column in reg1.split(command):
-            if column in self.columns:
-                reg = re.compile('(^{col}({op}))|(({op}){col}({op}))|((({op}){col}))$'.format(col = column, op = self.opperators))
-                position = reg.search(command)
-                if position:
-                    position = list(position.span())
-                    position[0] = position[0] + 1 if position[0] > 0 else position[0]
-                    position[1] = len(command) + 1 if position[1] >= len(command) else position[1]
-                    command = command[:position[0]] + "df['{col}']".format(col = column) + command[position[1]-1:]
+        regxp_opperators = re.compile(self.opperators)
+        variables = regxp_opperators.split(command)
+        opp = regxp_opperators.findall(command)
+        
+        command = ''
+        for i, var in enumerate(variables):
+            var_adj = var.strip()
+            if var_adj:
+                if var_adj in self.columns:
+                    command += 'X["' + var_adj + '"]'
+                else:
+                    command += var_adj
+
+            if i < len(opp):
+                command += opp[i]
 
         return command
 
@@ -39,49 +46,52 @@ class TransformNewColumn(BaseEstimator):
             command = self._adjust_command(command)
 
             df[namecol] = eval(command)
+            
+            self.mapping_commands[namecol] = command
 
         return df
 
 
 class TransformBinary(BaseEstimator):
-    def __init__(self, to_bin = None, drop = True, auto_binary = True, threshold_min = 0.5, threshold_max = 0.95):
-        if not to_bin and not auto_binary:
-            Exception
-
+    '''
+        This class wil be used to create a new binarized columns using a most relevant value
+        
+        :to_bin: Force binarize columns
+        
+        :auto_binary: Search columns whith rate greater than :threshold_min to binarize
+        :drop: Drop columns with a rate of class greater than :threshold_max and original columns
+    '''
+    def __init__(self, drop = True, threshold_min = 0.5, threshold_max = 0.95):
         self._drop = drop
-        self._auto_binary = auto_binary
         self._threshold_min = threshold_min
         self._threshold_max = threshold_max
         
         self.cols_bin = []
-
-        if to_bin:
-            self._to_bin = to_bin
-        else:
-            self._to_bin = [] 
-
-        self._to_drop = []
+        self.cols_drop = []
+        self._to_bin = {}
 
     def fit(self, X):
-        if self._auto_binary:
-            for col in X._get_numeric_data().columns:
-                value = (X[col] == 0).mean()
+        for col in X.columns:
+            value_counts = X[col].value_counts(normalize=True)
+            most_freq = value_counts.index[0]
+            value = value_counts[most_freq]
 
-                if (value > self._threshold_min) and (value < self._threshold_max):
-                    self._to_bin.append(col)
-                    self.cols_bin.append('bin_'+col)
+            if (value > self._threshold_min) and (value < self._threshold_max):
+                self._to_bin[col] = most_freq
+                self.cols_bin.append('bin_'+col+'_'+str(most_freq))
 
-                elif value >= self._threshold_max:
-                    self._to_drop.append(col)
+            elif value >= self._threshold_max:
+                self.cols_drop.append(col)
 
     def transform(self, X):
         df = X.copy()
 
-        for col in self._to_bin:
-            df['bin_'+col] = df[col].apply(lambda x: 1 if x>0 else 0)
+        for col in self._to_bin.keys():
+            most_freq = self._to_bin[col]
+            df['bin_'+col+'_'+str(most_freq)] = df[col].apply(lambda x: 1 if x == most_freq else 0)
 
         if self._drop:
-            df = df.drop(columns = self._to_bin + self._to_drop)
+            df = df.drop(columns = self.cols_drop + list(self._to_bin.keys()))
 
         return df
 
@@ -92,16 +102,17 @@ class TransformBinary(BaseEstimator):
 
 
 class TransformImputer(BaseEstimator):
-    def __init__(self, mapping = None, numeric_input = np.min, not_input = ['target']):
-        '''
+    '''
+        This class will be used to input non observed data
+        
         mapping = {
             'colA': 'ValueA',
             'colB': 0,
             'colC': np.mean,
             'LotFrontage': ('Neighborhood', np.mean)
         }
-        '''
-
+    '''
+    def __init__(self, mapping = None, numeric_input = np.min, not_input = ['target']):
         if not mapping:
             Exception
 
@@ -142,14 +153,20 @@ class TransformImputer(BaseEstimator):
 
 
 class TransformOthers(BaseEstimator):
-    def __init__(self, threshold = 0.01, not_use_cols = []):
+    '''
+        This class will be used to transform very granular fields
+        
+        :threshold: Define threshold to transform the value 'Others'
+        :not_transform_cols: Not transform this columns
+    '''
+    def __init__(self, threshold = 0.01, not_transform_cols = []):
         self.threshold = threshold
         self.relevant_values = {}
-        self.not_use_cols = not_use_cols
+        self.not_transform_cols = not_transform_cols
 
     def fit(self, X):
         for col in X.select_dtypes(include=['object']):
-            if col not in self.not_use_cols:
+            if col not in self.not_transform_cols:
                 aux = X.groupby(col)[[col]].count()/len(X)
                 aux = aux>=self.threshold
 
@@ -172,13 +189,18 @@ class TransformOthers(BaseEstimator):
 
 
 class TransformColumn(BaseEstimator):
-    def __init__(self, mapping = {}):
-        '''
+    '''
+        This class will be used to standardize the transformations
+        
         mapping = {
             'SalePrice': np.log1p
         }
-        '''
-
+        
+        tc = TransformColumn(mapping)
+        
+        tc.add({'PoolArea': np.log1p})
+    '''
+    def __init__(self, mapping = {}):
         self.mapping = mapping
 
     def add(self, mapping):
@@ -218,8 +240,3 @@ class TransformPower(BaseEstimator):
         df = self.transform(X)
 
         return df
-    
-    
-class TransformOneHot(BaseEstimator):
-    def __init__(self)
-        
