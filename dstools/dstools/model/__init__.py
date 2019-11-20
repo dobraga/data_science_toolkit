@@ -7,61 +7,55 @@ from sklearn import linear_model
 class EvalModels:
     def __init__(self, train = None, test = None,
                  metric = mean_squared_error, n_splits = 5, 
-                 cols = None, target = 'Target'):
-
-        self.evaluations = {}
+                 cols = None, target = 'Target', id = 'Id'):
 
         if train is None:
-            raise "The dataframe is nescessary"
-        else:
-            self.train = train.copy()
+            raise "The train dataset is nescessary"
+        
+        self.evaluations = {}
+        self.train = train.copy()
+        self.test = test.copy() if test else None
 
-        if test is not None:
-            self.test = test.copy()
-        else:
-            test = None
-
-        if cols:
-            self.cols = cols
-        else:
-            self.cols = [col for col in train._get_numeric_data().columns if col != target]
+        self.cols = cols if cols else [col for col in train._get_numeric_data().columns if col != target]
 
         self.metric = metric
         self.target = target
+        self.id = id
         self.kf = KFold(n_splits=n_splits, shuffle=True, random_state=2108)
 
-    def eval(self, name_of_model = 'lr', model = linear_model.LinearRegression()):
+    def eval(self, model = linear_model.LinearRegression()):
         evaluation = []
         train_predict = np.zeros(self.train.shape[0])
-        test_predict = np.zeros(self.test.shape[0])
+        if self.test:
+            test_predict = np.zeros(self.test.shape[0])
         
         for train_index, test_index in self.kf.split(self.train):
 
-            train_kf = self.train.loc[train_index,:]
-            train_features_kf = train_kf[self.cols]
-            train_target_kf = train_kf[self.target]
+            train_obs = self.train.loc[train_index,:]
+            X_train = train_obs[self.cols]
+            y_train = train_obs[self.target]
 
-            model.fit(train_features_kf, train_target_kf)
+            model.fit(X_train, y_train)
 
-            test_kf = self.train.loc[test_index,:]
-            test_features_kf = test_kf[self.cols]
-            test_target_kf = test_kf[self.target]
+            test_obs= self.train.loc[test_index,:]
+            X_test = test_obs[self.cols]
+            y_test = test_obs[self.target]
 
-            evaluation.append(self.metric(test_target_kf, model.predict(test_features_kf)))
+            evaluation.append(self.metric(y_test, model.predict(X_test)))
 
             train_predict += model.predict(self.train[self.cols])/self.kf.n_splits
         
-            if self.test is not None:
+            if self.test:
                 test_predict += model.predict(self.test[self.cols])/self.kf.n_splits
         
-        print('Score for {} model {:6.4f} ({:6.4f})'.format(name_of_model, np.mean(evaluation), np.std(evaluation)))
+        print('Score for {} model {:6.4f} ({:6.4f})'.format(model.__name__, np.mean(evaluation), np.std(evaluation)))
 
         ret = {'model': model,
                'metric': evaluation,
                'train_predict': train_predict,
                'test_predict': test_predict}
 
-        self.evaluations[name_of_model] = ret
+        self.evaluations[model.__name__] = ret
         
         return ret
 
@@ -82,12 +76,10 @@ class EvalModels:
 
     def to_csv(self, destransform = None):
         for model in self.evaluations.keys():
-            if destransform:
-                pred = destransform(self.evaluations[model]['test_predict'])
-            else:
-                pred = self.evaluations[model]['test_predict']
+            pred = self.evaluations[model]['test_predict']
+            destransform(pred) if destransform else pred
 
-            pd.DataFrame({'Id': self.test.Id, 
+            pd.DataFrame({'Id': self.test[self.id], 
                           self.target: pred}).to_csv('./output/{:6.4f}_{:6.4f}_{}'.format(np.mean(self.evaluations[model]['metric']),
                                                                                           np.std(self.evaluations[model]['metric']),
                                                                                           model), index=False)
@@ -180,6 +172,4 @@ class Stack:
             pd.DataFrame({'Id': self.test.Id, 
                           self.target: pred}).to_csv('./output/{:6.4f}_{:6.4f}_{}'.format(np.mean(self.evaluations[model]['metric']),
                                                                                           np.std(self.evaluations[model]['metric']),
-                                                                                          model), index=False)            
-        
-        
+                                                                                          model), index=False)
