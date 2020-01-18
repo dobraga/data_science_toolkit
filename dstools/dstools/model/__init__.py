@@ -14,30 +14,31 @@ class EvalModels:
         
         self.evaluations = {}
         self.train = train.copy()
-        self.test = test.copy() if test else None
+        self.test = test.copy() if test is not None else None
 
-        self.cols = cols if cols else [col for col in train._get_numeric_data().columns if col != target]
+        self.cols = cols if cols is not None else [col for col in train._get_numeric_data().columns if col != target]
 
         self.metric = metric
         self.target = target
         self.id = id
         self.kf = KFold(n_splits=n_splits, shuffle=True, random_state=2108)
 
-    def eval(self, model = linear_model.LinearRegression()):
+    def eval(self, name = 'LinearRegression', model = linear_model.LinearRegression):
+        model = model()
         evaluation = []
         train_predict = np.zeros(self.train.shape[0])
-        if self.test:
+        if self.test is not None:
             test_predict = np.zeros(self.test.shape[0])
         
         for train_index, test_index in self.kf.split(self.train):
-
-            train_obs = self.train.loc[train_index,:]
+            
+            train_obs = self.train.iloc[train_index,:]
             X_train = train_obs[self.cols]
             y_train = train_obs[self.target]
 
             model.fit(X_train, y_train)
 
-            test_obs= self.train.loc[test_index,:]
+            test_obs= self.train.iloc[test_index,:]
             X_test = test_obs[self.cols]
             y_test = test_obs[self.target]
 
@@ -45,29 +46,30 @@ class EvalModels:
 
             train_predict += model.predict(self.train[self.cols])/self.kf.n_splits
         
-            if self.test:
+            if self.test is not None:
                 test_predict += model.predict(self.test[self.cols])/self.kf.n_splits
         
-        print('Score for {} model {:6.4f} ({:6.4f})'.format(model.__name__, np.mean(evaluation), np.std(evaluation)))
+        print('Score for {} model {:6.4f} ({:6.4f})'.format(name, np.mean(evaluation), np.std(evaluation)))
 
         ret = {'model': model,
                'metric': evaluation,
                'train_predict': train_predict,
-               'test_predict': test_predict}
+               'test_predict': test_predict if self.test is not None else None}
 
-        self.evaluations[model.__name__] = ret
+        self.evaluations[name] = ret
         
         return ret
 
     def eval_models(self, dict_of_models):
         '''
         {
-            'lr': linear_model.LinearRegression(),
-            'blr':linear_model.bayes.BayesianRidge(),
-            'rfr':RandomForestRegressor(),
-            'br': BaggingRegressor(),
-            'abr':AdaBoostRegressor(),
-            'gbr':GradientBoostingRegressor()
+            'lr': linear_model.LinearRegression,
+            'blr':linear_model.bayes.BayesianRidge,
+            'rfr':RandomForestRegressor,
+            'br': BaggingRegressor,
+            'abr':AdaBoostRegressor,
+            'gbr':GradientBoogressor,
+            'gbr':GradientBoostingRegressor
         }
         '''
 
@@ -83,7 +85,7 @@ class EvalModels:
                           self.target: pred}).to_csv('./output/{:6.4f}_{:6.4f}_{}'.format(np.mean(self.evaluations[model]['metric']),
                                                                                           np.std(self.evaluations[model]['metric']),
                                                                                           model), index=False)
-
+                                                                                          
 class Stack:
     def __init__(self, eval = None, use_feature = True):
         if eval is None:
