@@ -61,8 +61,10 @@ class TransformBinary(BaseEstimator):
         :auto_binary: Search columns whith rate greater than :threshold_min to binarize
         :drop: Drop columns with a rate of class greater than :threshold_max and original columns
     '''
-    def __init__(self, drop = True, threshold_min = 0.5, threshold_max = 0.95):
+    def __init__(self, drop = True, auto_binary = True, threshold_min = 0.5, threshold_max = 0.95, to_bin = []):
         self._drop = drop
+        self.to_bin = to_bin
+        self.auto_binary = auto_binary
         self._threshold_min = threshold_min
         self._threshold_max = threshold_max
         
@@ -71,16 +73,21 @@ class TransformBinary(BaseEstimator):
         self._to_bin = {}
 
     def fit(self, X):
-        for col in X.columns:
+        for col in X.select_dtypes(include='object').columns:
             value_counts = X[col].value_counts(normalize=True)
             most_freq = value_counts.index[0]
             value = value_counts[most_freq]
 
-            if (value > self._threshold_min) and (value < self._threshold_max):
+            if self.auto_binary:
+                if (value > self._threshold_min) and (value < self._threshold_max):
+                    self._to_bin[col] = most_freq
+                    self.cols_bin.append('bin_'+col+'_'+str(most_freq))
+
+            if col in self.to_bin:
                 self._to_bin[col] = most_freq
                 self.cols_bin.append('bin_'+col+'_'+str(most_freq))
 
-            elif value >= self._threshold_max:
+            if value >= self._threshold_max:
                 self.cols_drop.append(col)
 
     def transform(self, X):

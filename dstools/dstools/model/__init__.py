@@ -23,8 +23,7 @@ class EvalModels:
         self.id = id
         self.kf = KFold(n_splits=n_splits, shuffle=True, random_state=2108)
 
-    def eval(self, name = 'LinearRegression', model = linear_model.LinearRegression):
-        model = model()
+    def eval(self, name = 'LinearRegression', model = linear_model.LinearRegression()):
         evaluation = []
         train_predict = np.zeros(self.train.shape[0])
         if self.test is not None:
