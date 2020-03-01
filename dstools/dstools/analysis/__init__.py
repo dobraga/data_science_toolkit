@@ -31,3 +31,8 @@ class Corr:
                 self.df_corr.loc[i, col_var] = line.var1 if np.absolute(cor1) < np.absolute(cor2) else line.var2
 
         return list(set(self.df_corr.loc[self.df_corr['corr'] >= .9, col_var]))
+
+def word_counts(df, column, stop = []):
+    aux = df[column].dropna().str.lower().str.replace('[^a-z ,]', '').str.split(',| ', expand=True).stack().reset_index(name='aux', drop=True)
+    aux = aux.value_counts()
+    return aux[~aux.index.isin(stop)]
