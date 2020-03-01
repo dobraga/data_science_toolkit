@@ -6,9 +6,18 @@ import re
 
 class TransformNewColumn(BaseEstimator):
     '''
-        This class wil be used to create a new columns in dataset
+        This class wil be used to create a new columns or just transform columns in dataset
         
-        mapping = {'TotalBath': 'BsmtFullBath + 0.5*BsmtHalfBath + FullBath + 0.5*HalfBath'}
+        tnc = TransformNewColumn({
+            'TotalBath': 'BsmtFullBath + 0.5*BsmtHalfBath + FullBath + 0.5*HalfBath',
+            'security_deposit': 'security_deposit.apply(to_numeric)'
+        })
+
+        To use non-basic functions like `to_numeric`
+
+        tnc.transform(X, env = vars())
+
+        Because `to_numeric` is not defined in this class
     '''
     def __init__(self,mapping = {}):
         self.mapping = mapping
@@ -18,17 +27,23 @@ class TransformNewColumn(BaseEstimator):
     def fit(self):
         return True
 
-    def _adjust_command(self, command):
+    def add(self, mapping = {}):
+        self.mapping = dict(self.mapping, **mapping)
+        return list(mapping.keys())
+
+    def _adjust_command(self, command, columns = []):
         regxp_opperators = re.compile(self.opperators)
+        regxp_columns = re.compile('|'.join(columns))
         variables = regxp_opperators.split(command)
         opp = regxp_opperators.findall(command)
-        
+                
         command = ''
         for i, var in enumerate(variables):
             var_adj = var.strip()
             if var_adj:
-                if var_adj in self.columns:
-                    command += 'X["' + var_adj + '"]'
+                find_column = regxp_columns.findall(var_adj)
+                if find_column:
+                    command += var_adj.replace(find_column[0], 'X["' + find_column[0] + '"]')
                 else:
                     command += var_adj
 
@@ -37,20 +52,20 @@ class TransformNewColumn(BaseEstimator):
 
         return command
 
-    def transform(self, X):
+    def transform(self, X, cols = None, env = None):
         df = X.copy()
-
-        self.columns = df.columns
+        
+        env = dict(locals(), **env) if env else locals()
 
         for namecol, command in self.mapping.items():
-            command = self._adjust_command(command)
+            if (not cols) or (namecol in cols):
+                command = self._adjust_command(command, df.columns)
 
-            df[namecol] = eval(command)
-            
-            self.mapping_commands[namecol] = command
+                df[namecol] = eval(command, env)
+                
+                self.mapping_commands[namecol] = command
 
         return df
-
 
 class TransformBinary(BaseEstimator):
     '''
