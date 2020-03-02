@@ -5,55 +5,44 @@ from sklearn.model_selection import KFold
 from sklearn import linear_model
 
 class EvalModels:
-    def __init__(self, train = None, test = None,
-                 metric = mean_squared_error, n_splits = 5, 
-                 cols = None, target = 'Target', id = 'Id'):
-
-        if train is None:
-            raise "The train dataset is nescessary"
+    def __init__(self, X_train, y_train, X_test=None, y_test=None,
+                 metric = mean_squared_error, n_splits = 5):
         
         self.evaluations = {}
-        self.train = train.copy()
-        self.test = test.copy() if test is not None else None
-
-        self.cols = cols if cols is not None else [col for col in train._get_numeric_data().columns if col != target]
+        self.X_train, self.X_test, self.y_train, self.y_test = X_train, X_test, y_train, y_test 
 
         self.metric = metric
-        self.target = target
-        self.id = id
         self.kf = KFold(n_splits=n_splits, shuffle=True, random_state=2108)
 
     def eval(self, name = 'LinearRegression', model = linear_model.LinearRegression()):
         evaluation = []
-        train_predict = np.zeros(self.train.shape[0])
-        if self.test is not None:
-            test_predict = np.zeros(self.test.shape[0])
+        y_train_predict = np.zeros(self.X_train.shape[0])
+        if self.y_test is not None:
+            y_test_predict = np.zeros(self.y_test.shape[0])
         
-        for train_index, test_index in self.kf.split(self.train):
+        for train_index, test_index in self.kf.split(self.X_train):
             
-            train_obs = self.train.iloc[train_index,:]
-            X_train = train_obs[self.cols]
-            y_train = train_obs[self.target]
+            X_train_fold = self.X_train.iloc[train_index,:].values
+            y_train_fold = self.y_train.iloc[train_index].values
 
-            model.fit(X_train, y_train)
+            model.fit(X_train_fold, y_train_fold)
 
-            test_obs= self.train.iloc[test_index,:]
-            X_test = test_obs[self.cols]
-            y_test = test_obs[self.target]
+            X_test_fold = self.X_train.iloc[test_index,:].values
+            y_test_fold = self.y_train.iloc[test_index].values
 
-            evaluation.append(self.metric(y_test, model.predict(X_test)))
+            evaluation.append(self.metric(y_test_fold, model.predict(X_test_fold)))
 
-            train_predict += model.predict(self.train[self.cols])/self.kf.n_splits
+            y_train_predict += model.predict(self.X_train)/self.kf.n_splits
         
-            if self.test is not None:
-                test_predict += model.predict(self.test[self.cols])/self.kf.n_splits
+            if self.y_test is not None:
+                y_test_predict += model.predict(self.X_test)/self.kf.n_splits
         
         print('Score for {} model {:6.4f} ({:6.4f})'.format(name, np.mean(evaluation), np.std(evaluation)))
 
         ret = {'model': model,
                'metric': evaluation,
-               'train_predict': train_predict,
-               'test_predict': test_predict if self.test is not None else None}
+               'train_predict': y_train_predict,
+               'test_predict': y_test_predict if self.y_test is not None else None}
 
         self.evaluations[name] = ret
         
