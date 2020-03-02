@@ -1,10 +1,10 @@
 from sklearn.preprocessing import PowerTransformer, OneHotEncoder
-from sklearn.base import BaseEstimator
+from sklearn.base import BaseEstimator, TransformerMixin
 import pandas as pd
 import numpy as np
 import re
 
-class TransformNewColumn(BaseEstimator):
+class TransformNewColumn(BaseEstimator, TransformerMixin):
     '''
         This class wil be used to create a new columns or just transform columns in dataset
         
@@ -117,12 +117,6 @@ class TransformBinary(BaseEstimator):
 
         return df
 
-    def fit_transform(self, X):
-        self.fit(X)
-        df = self.transform(X)
-        return df
-
-
 class TransformImputer(BaseEstimator):
     '''
         This class will be used to input non observed data
@@ -167,13 +161,6 @@ class TransformImputer(BaseEstimator):
 
         return df.fillna(mapping)
 
-    def fit_transform(self, X):
-        self.fit(X)
-        df = self.transform(X)
-
-        return df
-
-
 class TransformOthers(BaseEstimator):
     '''
         This class will be used to transform very granular fields
@@ -202,13 +189,6 @@ class TransformOthers(BaseEstimator):
             df.loc[~df[col].isin(self.relevant_values[col]), col] = 'Others'
 
         return df
-
-    def fit_transform(self, X):
-        self.fit(X)
-        df = self.transform(X)
-
-        return df
-
 
 class TransformColumn(BaseEstimator):
     '''
@@ -256,9 +236,4 @@ class TransformPower(BaseEstimator):
         df[self.cols_transform] = self.pt.transform(df[self.cols_transform])
         
         return df
-    
-    def fit_transform(self, X):
-        self.fit(X)
-        df = self.transform(X)
-
-        return df
+        
