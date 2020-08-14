@@ -12,15 +12,6 @@ from .Transform import (
 class Pipeline:
     def __init__(self):
         self.transformations = []
-        self.is_fitted = None
-
-    def _is_fitted(self):
-        if len(self.transformations) > 0:
-            fitted = [t.fitted for t in self.transformations]
-            self.is_fitted = min(fitted)
-
-    def fit(self, X):
-        return True
 
     def transform(self, X):
         df = X.copy()
@@ -31,5 +22,7 @@ class Pipeline:
         return df
 
     def add(self, transform):
-        self.transformations.append(transform)
-        self._is_fitted()
+        if transform.fitted:
+            self.transformations.append(transform)
+        else:
+            raise "Transformation not fitted"

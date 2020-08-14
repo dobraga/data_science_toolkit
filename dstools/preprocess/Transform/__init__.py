@@ -1,4 +1,4 @@
-from sklearn.preprocessing import PowerTransformer, OneHotEncoder
+from sklearn.preprocessing import PowerTransformer
 from ..utils import BasePreproc
 import pandas as pd
 import numpy as np
@@ -10,13 +10,15 @@ class TransformNewColumn(BasePreproc):
     This class wil be used to create a new columns or just transform columns in dataset
     
     tnc = TransformNewColumn({
-        'TotalBath': 'BsmtFullBath + 0.5*BsmtHalfBath + FullBath + 0.5*HalfBath',
-        'security_deposit': 'security_deposit.apply(to_numeric)'
+        'TotalBath': 'X["BsmtFullBath"] + 0.5*X["BsmtHalfBath"] + X["FullBath"] + 0.5*X["HalfBath"]',
+        'Test': 'X["SalePrice"].apply(log1p)'
     })
 
     To use non-basic functions like `to_numeric`
 
-    tnc.transform(X, env = vars())
+    tnc.fit(df, env={"log1p": np.log1p})
+
+    tnc.transform(X)
 
     Because `to_numeric` is not defined in this class
     """
@@ -24,51 +26,24 @@ class TransformNewColumn(BasePreproc):
     def __init__(self, mapping={}):
         super().__init__()
         self.mapping = mapping
-        self.opperators = "[\+|\-|\*|\/|\%]+"
-        self.mapping_commands = {}
+        self.fitted = True
+        self.env = {}
 
-    def _fit(self, X):
+    def _fit(self, X, **fit_params):
+        if "env" in fit_params.keys():
+            self.env = fit_params["env"]
         return self
 
     def add(self, mapping={}):
         self.mapping = dict(self.mapping, **mapping)
-        self.fitted = False
 
-    def _adjust_command(self, command, columns=[]):
-        regxp_opperators = re.compile(self.opperators)
-        regxp_columns = re.compile("|".join(columns))
-        variables = regxp_opperators.split(command)
-        opp = regxp_opperators.findall(command)
-
-        command = ""
-        for i, var in enumerate(variables):
-            var_adj = var.strip()
-            if var_adj:
-                find_column = regxp_columns.findall(var_adj)
-                if find_column:
-                    command += var_adj.replace(
-                        find_column[0], 'X["' + find_column[0] + '"]'
-                    )
-                else:
-                    command += var_adj
-
-            if i < len(opp):
-                command += opp[i]
-
-        return command
-
-    def transform(self, X, cols=None, env=None):
+    def transform(self, X):
         df = X.copy()
 
-        env = dict(locals(), **env) if env else locals()
+        env = dict(locals(), **self.env)
 
         for namecol, command in self.mapping.items():
-            if (not cols) or (namecol in cols):
-                command = self._adjust_command(command, df.columns)
-
-                df[namecol] = eval(command, env)
-
-                self.mapping_commands[namecol] = command
+            df[namecol] = eval(command, env)
 
         return df
 
@@ -232,6 +207,7 @@ class TransformColumn(BasePreproc):
     def __init__(self, mapping={}):
         super().__init__()
         self.mapping = mapping
+        self.fitted = True
 
     def add(self, mapping):
         self.mapping = {**self.mapping, **mapping}
