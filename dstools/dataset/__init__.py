@@ -10,6 +10,6 @@ def load_house_prices():
     train = pd.read_csv(join(module_path, "data", "house_prices/train.csv")).drop(
         columns="Id"
     )
-    test = pd.read_csv(join(module_path, "data", "house_prices/train.csv"))
+    test = pd.read_csv(join(module_path, "data", "house_prices/test.csv"))
 
     return train, test
