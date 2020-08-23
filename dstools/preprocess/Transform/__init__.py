@@ -26,26 +26,23 @@ class TransformNewColumn(BasePreproc):
     def __init__(self, mapping={}):
         super().__init__()
         self.mapping = mapping
-        self.fitted = True
-        self.env = {}
 
     def _fit(self, X, **fit_params):
+        self.env_ = {}
         if "env" in fit_params.keys():
-            self.env = fit_params["env"]
+            self.env_ = fit_params["env"]
         return self
 
     def add(self, mapping={}):
         self.mapping = dict(self.mapping, **mapping)
 
-    def transform(self, X):
-        df = X.copy()
-
-        env = dict(locals(), **self.env)
+    def _transform(self, X):
+        env = dict(locals(), **self.env_)
 
         for namecol, command in self.mapping.items():
-            df[namecol] = eval(command, env)
+            X[namecol] = eval(command, env)
 
-        return df
+        return X
 
 
 class TransformBinary(BasePreproc):
@@ -73,11 +70,11 @@ class TransformBinary(BasePreproc):
         self._threshold_min = threshold_min
         self._threshold_max = threshold_max
 
-        self.cols_bin = []
-        self.cols_drop = []
-        self._to_bin = {}
-
     def _fit(self, X):
+        self.cols_bin_ = []
+        self.cols_drop_ = []
+        self._to_bin_ = {}
+
         for col in X.select_dtypes(include="object").columns:
             value_counts = X[col].value_counts(normalize=True)
             most_freq = value_counts.index[0]
@@ -85,30 +82,28 @@ class TransformBinary(BasePreproc):
 
             if self.auto_binary:
                 if (value > self._threshold_min) and (value < self._threshold_max):
-                    self._to_bin[col] = most_freq
-                    self.cols_bin.append("bin_" + col + "_" + str(most_freq))
+                    self._to_bin_[col] = most_freq
+                    self.cols_bin_.append("bin_" + col + "_" + str(most_freq))
 
             if col in self.to_bin:
-                self._to_bin[col] = most_freq
-                self.cols_bin.append("bin_" + col + "_" + str(most_freq))
+                self._to_bin_[col] = most_freq
+                self.cols_bin_.append("bin_" + col + "_" + str(most_freq))
 
             if value >= self._threshold_max:
-                self.cols_drop.append(col)
+                self.cols_drop_.append(col)
         return self
 
-    def transform(self, X):
-        df = X.copy()
-
-        for col in self._to_bin.keys():
-            most_freq = self._to_bin[col]
-            df["bin_" + col + "_" + str(most_freq)] = df[col].apply(
+    def _transform(self, X):
+        for col in self._to_bin_.keys():
+            most_freq = self._to_bin_[col]
+            X["bin_" + col + "_" + str(most_freq)] = X[col].apply(
                 lambda x: 1 if x == most_freq else 0
             )
 
         if self._drop:
-            df = df.drop(columns=self.cols_drop + list(self._to_bin.keys()))
+            X = X.drop(columns=self.cols_drop_ + list(self._to_bin_.keys()))
 
-        return df
+        return X
 
 
 class TransformImputer(BasePreproc):
@@ -132,30 +127,30 @@ class TransformImputer(BasePreproc):
         self.not_input = not_input
 
     def _fit(self, X):
+        self.mapping_ = self.mapping
         for col in X._get_numeric_data().columns:
-            if (col not in self.mapping.keys()) and (col not in self.not_input):
-                self.mapping[col] = self.numeric_input
+            if (col not in self.mapping_.keys()) and (col not in self.not_input):
+                self.mapping_[col] = self.numeric_input
         return self
 
-    def transform(self, X):
-        df = X.copy()
-        mapping = self.mapping.copy()
+    def _transform(self, X):
+        mapping = self.mapping_.copy()
         tuples = []
 
         for col in mapping.keys():
             if callable(mapping[col]):
-                mapping[col] = mapping[col](df[col])
+                mapping[col] = mapping[col](X[col])
 
             elif isinstance(mapping[col], tuple):
                 group = mapping[col][0]
                 func = mapping[col][1]
-                df[col] = df.groupby(group)[col].transform(lambda x: x.fillna(func(x)))
+                X[col] = X.groupby(group)[col].transform(lambda x: x.fillna(func(x)))
                 tuples.append(col)
 
         for tup in tuples:
             del mapping[tup]
 
-        return df.fillna(mapping)
+        return X.fillna(mapping)
 
 
 class TransformOthers(BasePreproc):
@@ -169,26 +164,25 @@ class TransformOthers(BasePreproc):
     def __init__(self, threshold=0.01, not_transform_cols=[]):
         super().__init__()
         self.threshold = threshold
-        self.relevant_values = {}
         self.not_transform_cols = not_transform_cols
 
     def _fit(self, X):
+        self.relevant_values_ = {}
+
         for col in X.select_dtypes(include=["object"]):
             if col not in self.not_transform_cols:
                 aux = X.groupby(col)[[col]].count() / len(X)
                 aux = aux >= self.threshold
 
                 if aux[col].max:
-                    self.relevant_values[col] = list(aux[aux[col]].index)
+                    self.relevant_values_[col] = list(aux[aux[col]].index)
         return self
 
-    def transform(self, X):
-        df = X.copy()
+    def _transform(self, X):
+        for col in self.relevant_values_.keys():
+            X.loc[~X[col].isin(self.relevant_values_[col]), col] = "Others"
 
-        for col in self.relevant_values.keys():
-            df.loc[~df[col].isin(self.relevant_values[col]), col] = "Others"
-
-        return df
+        return X
 
 
 class TransformColumn(BasePreproc):
@@ -206,23 +200,19 @@ class TransformColumn(BasePreproc):
 
     def __init__(self, mapping={}):
         super().__init__()
-        self.mapping = mapping
-        self.fitted = True
+        self.mapping_ = mapping
 
     def add(self, mapping):
-        self.mapping = {**self.mapping, **mapping}
-        self.fitted = False
+        self.mapping_ = {**self.mapping_, **mapping}
 
     def _fit(self, X):
         return self
 
-    def transform(self, X):
-        df = X.copy()
+    def _transform(self, X):
+        for col, func in self.mapping_.items():
+            X[col] = func(X[col])
 
-        for col, func in self.mapping.items():
-            df[col] = func(df[col])
-
-        return df
+        return X
 
 
 class TransformPower(BasePreproc):
@@ -231,20 +221,18 @@ class TransformPower(BasePreproc):
         self.cols_not_transform = (
             not_transform if type(not_transform) == list else [not_transform]
         )
-        self.cols_transform = []
         self.pt = PowerTransformer()
 
     def _fit(self, X):
-        self.cols_transform = [
+        self.cols_transform_ = []
+        self.cols_transform_ = [
             col
             for col in X._get_numeric_data().columns
             if col not in self.cols_not_transform
         ]
-        self.pt.fit(X[self.cols_transform])
+        self.pt.fit(X[self.cols_transform_])
         return self
 
-    def transform(self, X):
-        df = X.copy()
-        df[self.cols_transform] = self.pt.transform(df[self.cols_transform])
-
-        return df
+    def _transform(self, X):
+        X[self.cols_transform_] = self.pt.transform(X[self.cols_transform_])
+        return X

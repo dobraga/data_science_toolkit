@@ -1,13 +1,12 @@
-from sklearn.base import TransformerMixin
+from sklearn.base import TransformerMixin, BaseEstimator
 
 
-class BasePreproc(TransformerMixin):
+class BasePreproc(TransformerMixin, BaseEstimator):
     def __init__(self):
         super().__init__()
-        self.fitted = False
 
     def fit(self, X, **fit_params):
-        r = self._fit(X, **fit_params)
-        self.fitted = True
-        return r
+        return self._fit(X, **fit_params)
 
+    def transform(self, X):
+        return self._transform(X.copy())

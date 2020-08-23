@@ -12,30 +12,28 @@ class OrdinalEncoder(BasePreproc):
             'Street':['Grvl','Pave']
         }
         """
-        self.ordinal = dict_ordinal
+        self.mapping_ = dict_ordinal
 
-    def _transform(self, value):
+    def _transform_line(self, value):
         return int(
             np.argwhere(
                 [("NAN" if pd.isna(value) else value) == obj for obj in self.values]
             )
         )
 
-    def transform_col(self, df, col):
-        self.values = self.ordinal[col]
-        return df[col].apply(lambda row: self._transform(row))
+    def transform_col(self, X, col):
+        self.values = self.mapping_[col]
+        return X[col].apply(lambda row: self._transform_line(row))
 
     def _fit(self, X):
         return self
 
-    def transform(self, X):
-        df = X.copy()
+    def _transform(self, X):
+        for col in self.mapping_.keys():
 
-        for col in self.ordinal.keys():
-
-            if col in df.columns:
+            if col in X.columns:
                 try:
-                    df[col] = self.transform_col(df, col)
+                    X[col] = self.transform_col(X, col)
                 except Exception as e:
                     print(
                         "The column {} was not converted, verify dict [{}]".format(
@@ -46,7 +44,7 @@ class OrdinalEncoder(BasePreproc):
             else:
                 print("The column {} was not found in dataset".format(col))
 
-        return df
+        return X
 
-    def inverse_transform(self, df):
+    def inverse_transform(self, X):
         return True
