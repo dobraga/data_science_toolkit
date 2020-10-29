@@ -2,10 +2,9 @@ from sklearn.preprocessing import PowerTransformer
 from ..utils import BasePreproc
 import pandas as pd
 import numpy as np
-import re
 
 
-class TransformNewColumn(BasePreproc):
+class TransformColumn(BasePreproc):
     """
     This class wil be used to create a new columns or just transform columns in dataset
     
@@ -23,23 +22,24 @@ class TransformNewColumn(BasePreproc):
     Because `to_numeric` is not defined in this class
     """
 
-    def __init__(self, mapping={}):
+    def __init__(self, mapping: dict = {}):
         super().__init__()
         self.mapping = mapping
 
-    def _fit(self, X, **fit_params):
+    def _fit(self, X: pd.DataFrame, **fit_params):
         self.env_ = {}
         if "env" in fit_params.keys():
             self.env_ = fit_params["env"]
         return self
 
-    def add(self, mapping={}):
+    def add(self, mapping: dict):
         self.mapping = dict(self.mapping, **mapping)
 
-    def _transform(self, X):
+    def _transform(self, X: pd.DataFrame) -> pd.DataFrame:
         env = dict(locals(), **self.env_)
 
         for namecol, command in self.mapping.items():
+            command = command.replace("\n", "").replace("\t", "")
             X[namecol] = eval(command, env)
 
         return X
@@ -70,7 +70,7 @@ class TransformBinary(BasePreproc):
         self._threshold_min = threshold_min
         self._threshold_max = threshold_max
 
-    def _fit(self, X):
+    def _fit(self, X: pd.DataFrame):
         self.cols_bin_ = []
         self.cols_drop_ = []
         self._to_bin_ = {}
@@ -93,7 +93,7 @@ class TransformBinary(BasePreproc):
                 self.cols_drop_.append(col)
         return self
 
-    def _transform(self, X):
+    def _transform(self, X: pd.DataFrame) -> pd.DataFrame:
         for col in self._to_bin_.keys():
             most_freq = self._to_bin_[col]
             X["bin_" + col + "_" + str(most_freq)] = X[col].apply(
@@ -118,22 +118,27 @@ class TransformImputer(BasePreproc):
     }
     """
 
-    def __init__(self, mapping=None, numeric_input=np.min, not_input=["target"]):
+    def __init__(
+        self, mapping=None, auto_input=False, numeric_input=np.min, not_input=["target"]
+    ):
         if not mapping:
             Exception
         super().__init__()
         self.mapping = mapping
+        self.auto_input = auto_input
         self.numeric_input = numeric_input
         self.not_input = not_input
 
-    def _fit(self, X):
+    def _fit(self, X: pd.DataFrame):
         self.mapping_ = self.mapping
-        for col in X._get_numeric_data().columns:
-            if (col not in self.mapping_.keys()) and (col not in self.not_input):
-                self.mapping_[col] = self.numeric_input
+        if self.auto_input:
+            for col in X._get_numeric_data().columns:
+                if (col not in self.mapping_.keys()) and (col not in self.not_input):
+                    self.mapping_[col] = self.numeric_input
+
         return self
 
-    def _transform(self, X):
+    def _transform(self, X: pd.DataFrame) -> pd.DataFrame:
         mapping = self.mapping_.copy()
         tuples = []
 
@@ -161,78 +166,25 @@ class TransformOthers(BasePreproc):
     :not_transform_cols: Not transform this columns
     """
 
-    def __init__(self, threshold=0.01, not_transform_cols=[]):
+    def __init__(self, threshold: float = 0.01, not_transform_cols: list = []):
         super().__init__()
         self.threshold = threshold
         self.not_transform_cols = not_transform_cols
 
-    def _fit(self, X):
+    def _fit(self, X: pd.DataFrame):
         self.relevant_values_ = {}
 
         for col in X.select_dtypes(include=["object"]):
             if col not in self.not_transform_cols:
-                aux = X.groupby(col)[[col]].count() / len(X)
+                aux = X[col].value_counts(normalize=True, dropna=False)
                 aux = aux >= self.threshold
 
-                if aux[col].max:
-                    self.relevant_values_[col] = list(aux[aux[col]].index)
+                if any(aux):
+                    self.relevant_values_[col] = list(aux[aux].index)
         return self
 
-    def _transform(self, X):
+    def _transform(self, X: pd.DataFrame) -> pd.DataFrame:
         for col in self.relevant_values_.keys():
             X.loc[~X[col].isin(self.relevant_values_[col]), col] = "Others"
 
-        return X
-
-
-class TransformColumn(BasePreproc):
-    """
-    This class will be used to standardize the transformations
-    
-    mapping = {
-        'SalePrice': np.log1p
-    }
-    
-    tc = TransformColumn(mapping)
-    
-    tc.add({'PoolArea': np.log1p})
-    """
-
-    def __init__(self, mapping={}):
-        super().__init__()
-        self.mapping_ = mapping
-
-    def add(self, mapping):
-        self.mapping_ = {**self.mapping_, **mapping}
-
-    def _fit(self, X):
-        return self
-
-    def _transform(self, X):
-        for col, func in self.mapping_.items():
-            X[col] = func(X[col])
-
-        return X
-
-
-class TransformPower(BasePreproc):
-    def __init__(self, not_transform="Target"):
-        super().__init__()
-        self.cols_not_transform = (
-            not_transform if type(not_transform) == list else [not_transform]
-        )
-        self.pt = PowerTransformer()
-
-    def _fit(self, X):
-        self.cols_transform_ = []
-        self.cols_transform_ = [
-            col
-            for col in X._get_numeric_data().columns
-            if col not in self.cols_not_transform
-        ]
-        self.pt.fit(X[self.cols_transform_])
-        return self
-
-    def _transform(self, X):
-        X[self.cols_transform_] = self.pt.transform(X[self.cols_transform_])
         return X
