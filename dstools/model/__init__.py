@@ -3,9 +3,7 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import KFold
 from joblib import delayed, cpu_count, Parallel
-
-# from sklearn.metrics import mean_squared_error
-# from sklearn import linear_model
+from sklearn import linear_model
 
 
 class EvalModels:
@@ -13,13 +11,13 @@ class EvalModels:
         self,
         X_train: pd.DataFrame,
         y_train: pd.DataFrame,
+        metric: Callable,
         X_test: pd.DataFrame = None,
         y_test: pd.DataFrame = None,
-        metric: Callable = None,
         n_splits: int = 5,
     ):
 
-        self.evaluations = {}
+        self.evaluations: dict = {}
         self.X_train, self.X_test, self.y_train, self.y_test = (
             X_train,
             X_test,
@@ -206,4 +204,3 @@ class Stack:
                 ),
                 index=False,
             )
-
