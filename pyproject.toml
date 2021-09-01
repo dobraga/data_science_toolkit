@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "data_science_toolkit"
+name = "dstools"
 version = "0.1.0"
 description = ""
 authors = ["Douglas Braga <douglasmartinsbraga@gmail.com>"]
